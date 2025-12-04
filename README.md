@@ -26,10 +26,10 @@ A complete Change Data Capture (CDC) pipeline that streams data changes from MyS
 
 ## Quick Start
 
-### 1. Clone and Start
+### Option A: Standard Setup (Pre-built Debezium Image)
 
 ```bash
-git clone https://github.com/yourusername/mysql-cdc-debezium-starrocks.git
+git clone https://github.com/ajithdaniel/mysql-cdc-debezium-starrocks.git
 cd mysql-cdc-debezium-starrocks
 
 # Start all services
@@ -37,6 +37,21 @@ docker-compose up -d
 
 # Wait for services to be healthy (~60 seconds)
 docker-compose ps
+```
+
+### Option B: Custom JAR Setup (Latest Debezium JARs)
+
+Use this option to run with the latest Debezium connector JARs from Maven Central:
+
+```bash
+# Download latest Debezium JARs (default: 3.0.2.Final)
+./debezium/download-connectors.sh
+
+# Or specify a version
+DEBEZIUM_VERSION=3.0.2.Final ./debezium/download-connectors.sh
+
+# Start with custom JARs
+docker-compose -f docker-compose.custom-jars.yml up -d
 ```
 
 ### 2. Register Debezium Connector
@@ -103,21 +118,25 @@ docker exec -i starrocks mysql -uroot -h127.0.0.1 -P9030 -e \
 
 ```
 .
-├── docker-compose.yml          # All services configuration
-├── debezium-connector.json     # Debezium MySQL connector config
+├── docker-compose.yml              # Standard setup (pre-built Debezium)
+├── docker-compose.custom-jars.yml  # Custom JAR setup (latest Debezium)
+├── debezium-connector.json         # Debezium MySQL connector config
+├── debezium/
+│   ├── download-connectors.sh      # Download latest Debezium JARs
+│   └── plugins/                    # Downloaded connector JARs
 ├── mysql/
-│   ├── my.cnf                  # MySQL binlog configuration
+│   ├── my.cnf                      # MySQL binlog configuration
 │   └── init/
-│       └── 01-init.sql         # Initial schema and data
-├── setup.sh                    # Initial setup script
-├── register-debezium.sh        # Register Debezium connector
-├── create-starrocks-tables.sh  # Create StarRocks schema
-├── create-routine-load.sh      # Create Kafka consumers
-├── test-pipeline.sh            # Test CDC pipeline
-├── benchmark.sh                # Performance benchmarking
-├── continuous-ingest.sh        # Continuous data generator
-├── monitor.sh                  # Monitor pipeline status
-└── cleanup.sh                  # Stop and cleanup
+│       └── 01-init.sql             # Initial schema and data
+├── setup.sh                        # Initial setup script
+├── register-debezium.sh            # Register Debezium connector
+├── create-starrocks-tables.sh      # Create StarRocks schema
+├── create-routine-load.sh          # Create Kafka consumers
+├── test-pipeline.sh                # Test CDC pipeline
+├── benchmark.sh                    # Performance benchmarking
+├── continuous-ingest.sh            # Continuous data generator
+├── monitor.sh                      # Monitor pipeline status
+└── cleanup.sh                      # Stop and cleanup
 ```
 
 ## Web UIs

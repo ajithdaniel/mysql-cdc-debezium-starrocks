@@ -1,0 +1,145 @@
+# docker-compose.custom-jars.yml
+# Use this file to run with custom/latest Debezium JAR files
+# First run: ./debezium/download-connectors.sh
+# Then: docker-compose -f docker-compose.custom-jars.yml up -d
+
+services:
+  # MySQL Source
+  mysql:
+    image: mysql:8.4
+    container_name: mysql-source
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: testdb
+      MYSQL_USER: dbuser
+      MYSQL_PASSWORD: dbpass
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d
+      - ./mysql/my.cnf:/etc/mysql/conf.d/my.cnf
+    command: --mysql-native-password=ON
+    networks:
+      - cdc-network
+
+  # Zookeeper for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.7.1
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - cdc-network
+
+  # Kafka
+  kafka:
+    image: confluentinc/cp-kafka:7.7.1
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - cdc-network
+
+  # Kafka UI
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - cdc-network
+
+  # Kafka Connect with Custom Debezium JARs
+  debezium:
+    image: confluentinc/cp-kafka-connect:7.7.1
+    container_name: debezium-connect
+    depends_on:
+      - kafka
+      - mysql
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka:9092
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: debezium-connect-group
+      CONNECT_CONFIG_STORAGE_TOPIC: debezium_configs
+      CONNECT_OFFSET_STORAGE_TOPIC: debezium_offsets
+      CONNECT_STATUS_STORAGE_TOPIC: debezium_statuses
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_REST_ADVERTISED_HOST_NAME: debezium-connect
+      CONNECT_PLUGIN_PATH: /usr/share/java,/kafka/connect
+      CONNECT_LOG4J_LOGGERS: "org.apache.kafka.connect=WARN,io.debezium=INFO"
+    volumes:
+      - ./debezium/plugins:/kafka/connect
+    networks:
+      - cdc-network
+
+  # Debezium UI
+  debezium-ui:
+    image: debezium/debezium-ui:2.5
+    platform: linux/amd64
+    container_name: debezium-ui
+    depends_on:
+      - debezium
+    ports:
+      - "8084:8080"
+    environment:
+      KAFKA_CONNECT_URIS: http://debezium-connect:8083
+    networks:
+      - cdc-network
+
+  # StarRocks All-in-One
+  starrocks:
+    image: starrocks/allin1-ubuntu:latest
+    container_name: starrocks
+    hostname: starrocks
+    ports:
+      - "8030:8030"
+      - "9030:9030"
+      - "8041:8040"
+    volumes:
+      - starrocks_fe_meta:/data/deploy/starrocks/fe/meta
+      - starrocks_be_storage:/data/deploy/starrocks/be/storage
+    networks:
+      - cdc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8030/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+networks:
+  cdc-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  starrocks_fe_meta:
+  starrocks_be_storage:

@@ -40,3 +40,6 @@ temp/
 secrets/
 *.pem
 *.key
+
+# Downloaded Debezium JARs (re-download with ./debezium/download-connectors.sh)
+debezium/plugins/
