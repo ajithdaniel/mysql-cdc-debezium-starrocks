@@ -1,0 +1,132 @@
+# docker-compose.yml
+
+services:
+  # MySQL Source
+  mysql:
+    image: mysql:8.4
+    container_name: mysql-source
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: testdb
+      MYSQL_USER: dbuser
+      MYSQL_PASSWORD: dbpass
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d
+      - ./mysql/my.cnf:/etc/mysql/conf.d/my.cnf
+    command: --mysql-native-password=ON
+    networks:
+      - cdc-network
+
+  # Zookeeper for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.7.1
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - cdc-network
+
+  # Kafka
+  kafka:
+    image: confluentinc/cp-kafka:7.7.1
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - cdc-network
+
+  # Kafka UI
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - cdc-network
+
+  # Debezium Connect (using quay.io - latest stable)
+  debezium:
+    image: quay.io/debezium/connect:3.0
+    container_name: debezium-connect
+    depends_on:
+      - kafka
+      - mysql
+    ports:
+      - "8083:8083"
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: debezium_configs
+      OFFSET_STORAGE_TOPIC: debezium_offsets
+      STATUS_STORAGE_TOPIC: debezium_statuses
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+    networks:
+      - cdc-network
+
+  # Debezium UI (Docker Hub - latest available)
+  debezium-ui:
+    image: debezium/debezium-ui:2.5
+    platform: linux/amd64
+    container_name: debezium-ui
+    depends_on:
+      - debezium
+    ports:
+      - "8084:8080"
+    environment:
+      KAFKA_CONNECT_URIS: http://debezium-connect:8083
+    networks:
+      - cdc-network
+
+  # StarRocks All-in-One (latest)
+  starrocks:
+    image: starrocks/allin1-ubuntu:latest
+    container_name: starrocks
+    hostname: starrocks
+    ports:
+      - "8030:8030"  # FE HTTP
+      - "9030:9030"  # FE MySQL protocol
+      - "8041:8040"  # BE HTTP
+    volumes:
+      - starrocks_fe_meta:/data/deploy/starrocks/fe/meta
+      - starrocks_be_storage:/data/deploy/starrocks/be/storage
+    networks:
+      - cdc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8030/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+networks:
+  cdc-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  starrocks_fe_meta:
+  starrocks_be_storage:

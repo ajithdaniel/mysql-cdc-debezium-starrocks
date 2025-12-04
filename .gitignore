@@ -1,0 +1,42 @@
+# Benchmark results
+benchmark_results_*.txt
+benchmark_report_*.md
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Docker volumes (if using bind mounts)
+data/
+volumes/
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Secrets (if any)
+secrets/
+*.pem
+*.key
